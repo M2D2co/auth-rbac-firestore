@@ -1,0 +1,46 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function checkPermission(resourceId, permission) {
+      let uid = request.auth.uid;
+      let rbac = /databases/$(database)/documents/rbac/$(resourceId)/users/$(uid);
+      let roleId = get(rbac).data.roleId;
+      let role = /databases/$(database)/documents/roles/$(roleId);
+      return get(role).data.get(permission, false);
+    }
+
+    match /users/{userId}/{document=**} {
+      allow list: if request.auth != null;
+      allow read, update: if userId == request.auth.uid;
+    }
+
+    match /data/{resourceId} {
+      allow list: if request.auth != null; 
+      allow get: if checkPermission(resourceId, 'read');
+      allow create: if request.resource.data.createdBy == request.auth.uid;
+      allow update: if checkPermission(resourceId, 'update');
+      allow delete: if checkPermission(resourceId, 'delete');
+    }
+
+    match /data/{resourceId}/{document=**} {
+      allow read: if checkPermission(resourceId, 'read');
+      allow create: if checkPermission(resourceId, 'create');
+      allow update: if checkPermission(resourceId, 'update');
+      allow delete: if checkPermission(resourceId, 'delete');
+    }
+
+    match /rbac/{resourceId}/{document=**} {
+      allow read, write: if checkPermission(resourceId, 'admin');
+    }
+
+    match /rbac/{resourceId}/users/{userId} {
+      allow read: if userId == request.auth.uid;
+    }
+
+    match /roles/{roleId} {
+      allow read: if request.auth != null;
+    }
+
+  }
+}
